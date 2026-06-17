@@ -13,7 +13,16 @@ from scratch for clarity and reproducibility.
 ## 🚀 Quick Start
 ```bash
 python -m venv .venv
+```
+```bash
+# Linux / macOS
 source .venv/bin/activate
+
+# Windows (PowerShell / CMD)
+.venv\Scripts\activate
+
+```
+```bash
 pip install -e ".[dev]" 
 ```
 
