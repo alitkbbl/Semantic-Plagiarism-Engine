@@ -46,7 +46,6 @@ Requires Python 3.9+.
 
 ```bash
 python -m venv .venv
-<<<<<<< HEAD
 ```
 ```bash
 # Linux / macOS
@@ -58,11 +57,6 @@ source .venv/bin/activate
 ```
 ```bash
 pip install -e ".[dev]" 
-=======
-source .venv/bin/activate        # on Windows: .venv\Scripts\activate
-
-pip install -r requirements.txt -e .
->>>>>>> 174dcee (feat: initial commit for demo version 1)
 ```
 
 This installs the runtime dependencies (`numpy`, `pandas`, `click`), `pytest` for the test suite, and the

@@ -7,7 +7,7 @@ name = "plagiarism-engine"
 version = "1.0.0"
 description = "Educational semantic duplicate & near-plagiarism detection engine (Shingling+MinHash+LSH vs. TF-IDF weighted SimHash)."
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [{ name = "Ali" }]
 keywords = [
