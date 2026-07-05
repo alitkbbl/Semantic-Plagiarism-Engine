@@ -1,0 +1,8 @@
+Sending humans to Mars involves huge engineering obstacles, among them
+radiation exposure, the lengthy journey between the two planets, and the
+challenge of safely landing heavy equipment on the Martian surface.
+Spacecraft engineers have to plan for months of isolation, scarce
+resupply opportunities, and the need to generate oxygen, water, and fuel
+from resources found on site once astronauts touch down. Earlier robotic
+missions have already surveyed candidate landing sites and proven out
+technology a future human mission would rely on.

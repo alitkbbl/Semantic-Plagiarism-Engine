@@ -1,199 +1,204 @@
-# src/preprocessing.py
 """
-Preprocessing module for document preparation and shingling.
+preprocessing.py
+=================
 
-This module handles:
-- Text cleaning and normalization
-- Word shingle generation (k-shingles)
-- Shingle set creation for Jaccard similarity
+Text preprocessing pipeline shared by both detection backends
+(Shingling + MinHash + LSH, and TF-IDF weighted SimHash).
+
+Pipeline stages (in order):
+    1. Character normalization (unicode + Persian character folding)
+    2. Punctuation stripping
+    3. Whitespace collapsing
+    4. Stop word removal (English + Persian)
+    5. Tokenization
+    6. Word shingle ("k-gram") construction
+
+The pipeline is intentionally dependency-free (stdlib only) so that it can
+run on any machine without extra installs, and so behaviour is fully
+transparent for the technical report.
 """
+
+from __future__ import annotations
 
 import re
-from typing import Set, List, Optional
+import string
+import unicodedata
+from dataclasses import dataclass, field
+from typing import Iterable, List, Sequence, Set, Tuple
+
+# --------------------------------------------------------------------------- #
+# Stop words
+# --------------------------------------------------------------------------- #
+
+# A small, classic English stop word list. This is intentionally not
+# exhaustive -- the goal is a transparent, easily-audited list rather than a
+# maximal one imported from a third-party corpus.
+STOPWORDS_EN: frozenset = frozenset(
+    """
+    a an and are as at be by for from has have he her hers him his i in
+    is it its of on or our ours she that the their theirs them they this
+    to was we were will with you your yours
+    """.split()
+)
+
+# Persian (Farsi) equivalents of the same closed-class function words,
+# as explicitly requested by the project specification ("and", "is",
+# "the", "or" and their Persian equivalents).
+STOPWORDS_FA: frozenset = frozenset(
+    """
+    و است هست را در به از که این آن یا با برای بر تا هم یک آنها ایشان
+    من تو او ما شما نیز اگر اما ولی هر هیچ چون چرا کدام همه بی
+    """.split()
+)
+
+STOPWORDS: frozenset = STOPWORDS_EN | STOPWORDS_FA
+
+# --------------------------------------------------------------------------- #
+# Character normalization
+# --------------------------------------------------------------------------- #
+
+# Arabic-script look-alikes that should be folded to their canonical
+# Persian forms before comparison (very common source of false negatives
+# in Persian text, since many keyboards/input methods produce the Arabic
+# variants interchangeably).
+_PERSIAN_CHAR_MAP = {
+    "\u064a": "\u06cc",  # ARABIC YEH -> PERSIAN YEH (ی)
+    "\u0643": "\u06a9",  # ARABIC KAF -> PERSIAN KEHEH (ک)
+    "\u0629": "\u0647",  # ARABIC TEH MARBUTA -> HEH (ة -> ه)
+    "\u06c0": "\u0647",  # HEH DOACHASHMEE -> HEH
+    "\u0654": "",        # ARABIC HAMZA ABOVE (combining) -> drop
+    "\u0640": "",        # ARABIC TATWEEL (kashida) -> drop
+}
+
+# Arabic/Persian diacritics (harakat) - purely phonetic marks that should
+# not affect duplicate detection.
+_ARABIC_DIACRITICS_RE = re.compile(
+    "[" + "".join(chr(c) for c in range(0x064B, 0x0653)) + "]"
+)
+
+# Punctuation to strip: standard ASCII punctuation plus common
+# Arabic/Persian punctuation marks that do not appear in `string.punctuation`.
+_PERSIAN_PUNCTUATION = "،؛؟٪«»…ـ"
+_PUNCTUATION_TABLE = str.maketrans(
+    {ch: " " for ch in (string.punctuation + _PERSIAN_PUNCTUATION)}
+)
+
+_WHITESPACE_RE = re.compile(r"\s+", flags=re.UNICODE)
 
 
-class TextPreprocessor:
+def _strip_control_characters(text: str) -> str:
+    """Drop unicode control/format/surrogate characters.
+
+    Guards against "documents containing unusual characters" (stray control
+    bytes, zero-width joiners, unpaired surrogates from bad encodings, etc.)
+    causing crashes or corrupting shingle boundaries downstream. Whitespace
+    characters such as tab/newline/carriage-return are technically in the
+    "Cc" (control) unicode category too, but must be preserved here so the
+    later whitespace-collapsing step can turn them into normal spaces
+    instead of having words silently glued together.
     """
-    Handles text cleaning and normalization.
-    """
-    
-    def __init__(
-        self,
-        lowercase: bool = True,
-        remove_punctuation: bool = True,
-        remove_extra_whitespace: bool = True
-    ):
-        """
-        Initialize the text preprocessor.
-        
-        Args:
-            lowercase: Convert text to lowercase
-            remove_punctuation: Remove punctuation marks
-            remove_extra_whitespace: Normalize whitespace
-        """
-        self.lowercase = lowercase
-        self.remove_punctuation = remove_punctuation
-        self.remove_extra_whitespace = remove_extra_whitespace
-    
-    def clean(self, text: str) -> str:
-        """
-        Clean and normalize input text.
-        
-        Args:
-            text: Raw input text
-            
-        Returns:
-            Cleaned text
-        """
-        if not text or not isinstance(text, str):
-            return ""
-        
-        # Convert to lowercase
-        if self.lowercase:
-            text = text.lower()
-        
-        # Remove punctuation
-        if self.remove_punctuation:
-            # Keep only alphanumeric and whitespace
-            text = re.sub(r'[^\w\s]', ' ', text)
-        
-        # Normalize whitespace
-        if self.remove_extra_whitespace:
-            text = re.sub(r'\s+', ' ', text)
-            text = text.strip()
-        
-        return text
+    return "".join(
+        ch
+        for ch in text
+        if ch.isspace() or unicodedata.category(ch) not in ("Cc", "Cf", "Cs", "Co")
+    )
 
 
-class WordShingles:
+def normalize_text(text: str) -> str:
+    """Normalize raw text prior to tokenization.
+
+    Steps: unicode NFKC normalization, control-character removal, Persian
+    character folding, diacritic removal, lower-casing, punctuation removal
+    and whitespace collapsing. Safe to call on empty strings.
     """
-    Generate word k-shingles from documents.
-    
-    According to the guide (Page 2):
-    - Suggested shingle size: 3 to 5 words
-    - Must handle very short, empty, or unusual-character texts
-    """
-    
-    def __init__(self, k: int = 3, preprocessor: Optional[TextPreprocessor] = None):
-        """
-        Initialize the word shingling generator.
-        
-        Args:
-            k: Size of word shingles (default: 3, recommended: 3-5)
-            preprocessor: TextPreprocessor instance (if None, uses default)
-        """
-        if k < 1:
-            raise ValueError(f"Shingle size k must be >= 1, got {k}")
-        
-        self.k = k
-        self.preprocessor = preprocessor or TextPreprocessor()
-    
-    def tokenize(self, text: str) -> List[str]:
-        """
-        Tokenize text into words.
-        
-        Args:
-            text: Input text
-            
-        Returns:
-            List of word tokens
-        """
-        # Clean text first
-        text = self.preprocessor.clean(text)
-        
-        # Split into words
-        tokens = text.split()
-        
-        return tokens
-    
-    def generate_shingles(self, text: str) -> Set[str]:
-        """
-        Generate k-word shingles from text.
-        
-        Args:
-            text: Input text
-            
-        Returns:
-            Set of k-word shingles
-            
-        Example:
-            >>> shingler = WordShingles(k=3)
-            >>> shingler.generate_shingles("the cat sat on the mat")
-            {'the cat sat', 'cat sat on', 'sat on the', 'on the mat'}
-        """
-        tokens = self.tokenize(text)
-        
-        # Handle edge cases
-        if len(tokens) == 0:
-            return set()
-        
-        if len(tokens) < self.k:
-            # For very short documents, return the entire document as one shingle
-            return {' '.join(tokens)}
-        
-        # Generate k-shingles
-        shingles = set()
-        for i in range(len(tokens) - self.k + 1):
-            shingle = ' '.join(tokens[i:i + self.k])
-            shingles.add(shingle)
-        
-        return shingles
-    
-    def jaccard_similarity(self, set_a: Set[str], set_b: Set[str]) -> float:
-        """
-        Calculate Jaccard similarity between two shingle sets.
-        
-        According to the guide (Page 2):
-        J(A, B) = |A ∩ B| / |A ∪ B|
-        
-        Args:
-            set_a: First shingle set
-            set_b: Second shingle set
-            
-        Returns:
-            Jaccard similarity score (0.0 to 1.0)
-        """
-        if len(set_a) == 0 and len(set_b) == 0:
-            return 1.0  # Both empty = identical
-        
-        intersection = len(set_a & set_b)
-        union = len(set_a | set_b)
-        
-        if union == 0:
-            return 0.0
-        
-        return intersection / union
+    if text is None:
+        return ""
+
+    # Guard against non-string input (e.g. NaN from a pandas cell).
+    if not isinstance(text, str):
+        text = str(text)
+
+    text = unicodedata.normalize("NFKC", text)
+    text = _strip_control_characters(text)
+
+    for src, dst in _PERSIAN_CHAR_MAP.items():
+        text = text.replace(src, dst)
+    text = _ARABIC_DIACRITICS_RE.sub("", text)
+
+    text = text.lower()
+    text = text.translate(_PUNCTUATION_TABLE)
+    text = _WHITESPACE_RE.sub(" ", text).strip()
+    return text
 
 
-# Convenience functions for quick usage
-def create_shingles(text: str, k: int = 3) -> Set[str]:
-    """
-    Convenience function to generate shingles from text.
-    
-    Args:
-        text: Input text
-        k: Shingle size (default: 3)
-        
-    Returns:
-        Set of k-word shingles
-    """
-    shingler = WordShingles(k=k)
-    return shingler.generate_shingles(text)
+def tokenize(text: str) -> List[str]:
+    """Whitespace tokenization on already-normalized text."""
+    normalized = normalize_text(text)
+    if not normalized:
+        return []
+    return normalized.split(" ")
 
 
-def jaccard_similarity(text_a: str, text_b: str, k: int = 3) -> float:
+def remove_stopwords(tokens: Sequence[str], stopwords: Iterable[str] = STOPWORDS) -> List[str]:
+    """Filter stop words out of a token sequence."""
+    sw = stopwords if isinstance(stopwords, (set, frozenset)) else set(stopwords)
+    return [t for t in tokens if t and t not in sw]
+
+
+def build_shingles(tokens: Sequence[str], k: int = 3) -> Set[str]:
+    """Build word-level shingles (k-grams) from a token sequence.
+
+    Edge cases handled explicitly:
+      * Empty document (no tokens) -> empty shingle set.
+      * Very short document (fewer tokens than k) -> the whole document is
+        treated as a single shingle, so short documents are not silently
+        dropped from comparison entirely.
     """
-    Convenience function to calculate Jaccard similarity between two texts.
-    
-    Args:
-        text_a: First text
-        text_b: Second text
-        k: Shingle size (default: 3)
-        
-    Returns:
-        Jaccard similarity score (0.0 to 1.0)
+    if k < 1:
+        raise ValueError("Shingle size k must be >= 1")
+    n = len(tokens)
+    if n == 0:
+        return set()
+    if n < k:
+        return {" ".join(tokens)}
+    return {" ".join(tokens[i : i + k]) for i in range(n - k + 1)}
+
+
+@dataclass
+class PreprocessedDocument:
+    """Container for the result of running the full preprocessing pipeline
+    on a single document."""
+
+    raw_text: str
+    normalized_text: str
+    tokens: List[str] = field(default_factory=list)
+    shingles: Set[str] = field(default_factory=set)
+
+    @property
+    def is_empty(self) -> bool:
+        return len(self.tokens) == 0
+
+
+def preprocess_document(
+    text: str,
+    shingle_size: int = 3,
+    stopwords: Iterable[str] = STOPWORDS,
+    drop_stopwords: bool = True,
+) -> PreprocessedDocument:
+    """Run the complete preprocessing pipeline on a single document.
+
+    Returns a :class:`PreprocessedDocument` holding the normalized text,
+    the (optionally stop-word-filtered) token list, and the shingle set
+    used for Jaccard / MinHash similarity.
     """
-    shingler = WordShingles(k=k)
-    shingles_a = shingler.generate_shingles(text_a)
-    shingles_b = shingler.generate_shingles(text_b)
-    return shingler.jaccard_similarity(shingles_a, shingles_b)
+    normalized = normalize_text(text)
+    tokens = tokenize(text)
+    if drop_stopwords:
+        tokens = remove_stopwords(tokens, stopwords)
+    shingles = build_shingles(tokens, k=shingle_size)
+    return PreprocessedDocument(
+        raw_text=text if isinstance(text, str) else str(text),
+        normalized_text=normalized,
+        tokens=tokens,
+        shingles=shingles,
+    )

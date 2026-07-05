@@ -1,0 +1,8 @@
+Human exploration of Mars presents enormous engineering challenges,
+including radiation exposure, the long transit time between planets, and
+the difficulty of landing heavy payloads safely on the Martian surface.
+Spacecraft designers must account for months of isolation, limited
+resupply options, and the need to produce oxygen, water, and fuel using
+local resources once astronauts arrive. Robotic precursor missions have
+already mapped potential landing sites and tested technologies that a
+future crewed mission would depend on.

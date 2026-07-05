@@ -1,265 +1,333 @@
 """
-Evaluation utilities for plagiarism detection methods.
+evaluation.py
+=============
 
-Provides:
-- Metrics computation (precision, recall, F1, accuracy)
-- Speed benchmarking
-- Comparison of different methods
+Evaluation metrics and pipeline runners used to compare the two detection
+backends (MinHash+LSH vs. TF-IDF weighted SimHash) on a labeled pair
+dataset, per the "Evaluate on a labeled pair dataset" CLI requirement.
+
+Precision / recall / F1 are implemented from scratch (a two-line
+computation) rather than pulled in from scikit-learn, keeping the
+dependency footprint to just NumPy + Pandas as specified.
 """
 
+from __future__ import annotations
+
 import time
-from typing import List, Dict, Tuple, Callable, Optional
-import logging
+from dataclasses import dataclass, field
+from typing import Callable, Dict, List, Sequence, Tuple
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+import pandas as pd
 
-
-class MetricsCalculator:
-    """Calculate classification metrics from predictions."""
-    
-    @staticmethod
-    def compute_confusion_matrix(y_true: List[int], y_pred: List[int]) -> Dict[str, int]:
-        """
-        Compute confusion matrix counts.
-        
-        Args:
-            y_true: Ground truth labels (0 or 1)
-            y_pred: Predicted labels (0 or 1)
-        
-        Returns:
-            Dictionary with TP, FP, TN, FN counts
-        """
-        if len(y_true) != len(y_pred):
-            raise ValueError("y_true and y_pred must have same length")
-        
-        tp = sum(1 for yt, yp in zip(y_true, y_pred) if yt == 1 and yp == 1)
-        fp = sum(1 for yt, yp in zip(y_true, y_pred) if yt == 0 and yp == 1)
-        tn = sum(1 for yt, yp in zip(y_true, y_pred) if yt == 0 and yp == 0)
-        fn = sum(1 for yt, yp in zip(y_true, y_pred) if yt == 1 and yp == 0)
-        
-        return {
-            'true_positives': tp,
-            'false_positives': fp,
-            'true_negatives': tn,
-            'false_negatives': fn
-        }
-    
-    @staticmethod
-    def compute_metrics(y_true: List[int], y_pred: List[int]) -> Dict[str, float]:
-        """
-        Compute precision, recall, F1-score, and accuracy.
-        
-        Args:
-            y_true: Ground truth labels (0 or 1)
-            y_pred: Predicted labels (0 or 1)
-        
-        Returns:
-            Dictionary with precision, recall, f1_score, accuracy
-        """
-        cm = MetricsCalculator.compute_confusion_matrix(y_true, y_pred)
-        
-        tp = cm['true_positives']
-        fp = cm['false_positives']
-        tn = cm['true_negatives']
-        fn = cm['false_negatives']
-        
-        # Precision: TP / (TP + FP)
-        precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
-        
-        # Recall: TP / (TP + FN)
-        recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
-        
-        # F1-score: 2 * (precision * recall) / (precision + recall)
-        f1_score = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0.0
-        
-        # Accuracy: (TP + TN) / (TP + TN + FP + FN)
-        total = tp + tn + fp + fn
-        accuracy = (tp + tn) / total if total > 0 else 0.0
-        
-        return {
-            'precision': precision,
-            'recall': recall,
-            'f1_score': f1_score,
-            'accuracy': accuracy,
-            **cm
-        }
-    
-    @staticmethod
-    def apply_threshold(similarities: List[float], threshold: float) -> List[int]:
-        """
-        Convert similarity scores to binary predictions.
-        
-        Args:
-            similarities: List of similarity scores (0.0 to 1.0)
-            threshold: Threshold for classification
-        
-        Returns:
-            List of binary predictions (0 or 1)
-        """
-        return [1 if sim >= threshold else 0 for sim in similarities]
+from . import preprocessing
+from .lsh import LSHIndex
+from .minhash import MinHasher, estimate_jaccard
+from .simhash import TfidfSimHasher, hamming_similarity
 
 
-class BenchmarkRunner:
-    """Run and compare different plagiarism detection methods."""
-    
-    def __init__(self, pairs: List[Dict]):
-        """
-        Initialize benchmark runner.
-        
-        Args:
-            pairs: List of pair dictionaries with 'text_a', 'text_b', 'label'
-        """
-        self.pairs = pairs
-        self.results = []
-    
-    def run_method(self,
-                   method_name: str,
-                   similarity_fn: Callable[[str, str], float],
-                   threshold: float = 0.5,
-                   **method_params) -> Dict:
-        """
-        Run a similarity method on all pairs and compute metrics.
-        
-        Args:
-            method_name: Name of the method (e.g., 'jaccard', 'minhash', 'simhash')
-            similarity_fn: Function that takes two texts and returns similarity score
-            threshold: Threshold for classification
-            **method_params: Additional method parameters to log
-        
-        Returns:
-            Dictionary with metrics and timing information
-        """
-        logger.info(f"Running method: {method_name}")
-        
-        y_true = [pair['label'] for pair in self.pairs]
-        similarities = []
-        
-        start_time = time.time()
-        
-        for i, pair in enumerate(self.pairs):
-            if (i + 1) % 100 == 0:
-                logger.info(f"  Processed {i + 1}/{len(self.pairs)} pairs")
-            
-            try:
-                sim = similarity_fn(pair['text_a'], pair['text_b'])
-                similarities.append(sim)
-            except Exception as e:
-                logger.warning(f"Error computing similarity for pair {i}: {e}")
-                similarities.append(0.0)
-        
-        end_time = time.time()
-        execution_time = end_time - start_time
-        
-        # Convert similarities to predictions
-        y_pred = MetricsCalculator.apply_threshold(similarities, threshold)
-        
-        # Compute metrics
-        metrics = MetricsCalculator.compute_metrics(y_true, y_pred)
-        
-        result = {
-            'method': method_name,
-            'threshold': threshold,
-            'execution_time_seconds': execution_time,
-            'pairs_per_second': len(self.pairs) / execution_time if execution_time > 0 else 0.0,
-            **metrics,
-            **method_params
-        }
-        
-        self.results.append(result)
-        
-        logger.info(f"  Completed in {execution_time:.2f}s")
-        logger.info(f"  Precision: {metrics['precision']:.4f}, Recall: {metrics['recall']:.4f}, F1: {metrics['f1_score']:.4f}")
-        
-        return result
-    
-    def get_results(self) -> List[Dict]:
-        """
-        Get all benchmark results.
-        
-        Returns:
-            List of result dictionaries
-        """
-        return self.results
-    
-    def compare_methods(self) -> Dict:
-        """
-        Compare all methods and find the best performing one.
-        
-        Returns:
-            Dictionary with comparison summary
-        """
-        if not self.results:
-            return {}
-        
-        # Find best method by F1-score
-        best_f1 = max(self.results, key=lambda x: x['f1_score'])
-        
-        # Find fastest method
-        fastest = min(self.results, key=lambda x: x['execution_time_seconds'])
-        
-        return {
-            'best_f1_method': best_f1['method'],
-            'best_f1_score': best_f1['f1_score'],
-            'fastest_method': fastest['method'],
-            'fastest_time_seconds': fastest['execution_time_seconds'],
-            'all_results': self.results
-        }
+# --------------------------------------------------------------------------- #
+# Metrics
+# --------------------------------------------------------------------------- #
+
+def confusion_counts(y_true: Sequence[int], y_pred: Sequence[int]) -> Dict[str, int]:
+    """Compute TP / FP / FN / TN for binary labels (1 = duplicate)."""
+    tp = fp = fn = tn = 0
+    for t, p in zip(y_true, y_pred):
+        if t == 1 and p == 1:
+            tp += 1
+        elif t == 0 and p == 1:
+            fp += 1
+        elif t == 1 and p == 0:
+            fn += 1
+        else:
+            tn += 1
+    return {"tp": tp, "fp": fp, "fn": fn, "tn": tn}
 
 
-def evaluate_method(pairs: List[Dict],
-                    similarity_fn: Callable[[str, str], float],
-                    threshold: float = 0.5) -> Dict[str, float]:
+def precision_recall_f1(y_true: Sequence[int], y_pred: Sequence[int]) -> Dict[str, float]:
+    """Compute precision, recall and F1 for binary duplicate predictions.
+
+    Returns 0.0 for any metric whose denominator would be zero, rather
+    than raising, so evaluation never crashes on a degenerate (e.g.
+    all-negative-prediction) run.
     """
-    Convenience function to evaluate a single method.
-    
-    Args:
-        pairs: List of pair dictionaries with 'text_a', 'text_b', 'label'
-        similarity_fn: Function that computes similarity between two texts
-        threshold: Classification threshold
-    
-    Returns:
-        Dictionary with metrics
-    """
-    y_true = [pair['label'] for pair in pairs]
-    similarities = [similarity_fn(pair['text_a'], pair['text_b']) for pair in pairs]
-    y_pred = MetricsCalculator.apply_threshold(similarities, threshold)
-    
-    return MetricsCalculator.compute_metrics(y_true, y_pred)
+    counts = confusion_counts(y_true, y_pred)
+    tp, fp, fn = counts["tp"], counts["fp"], counts["fn"]
+
+    precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+    recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+    f1 = (2 * precision * recall / (precision + recall)) if (precision + recall) > 0 else 0.0
+
+    return {"precision": precision, "recall": recall, "f1": f1, **counts}
 
 
-def benchmark_speed(similarity_fn: Callable[[str, str], float],
-                   text_pairs: List[Tuple[str, str]],
-                   num_iterations: int = 1) -> Dict[str, float]:
+def timed(fn: Callable, *args, **kwargs) -> Tuple[object, float]:
+    """Run ``fn`` and return (result, elapsed_seconds)."""
+    start = time.perf_counter()
+    result = fn(*args, **kwargs)
+    elapsed = time.perf_counter() - start
+    return result, elapsed
+
+
+def sweep_thresholds(
+    y_true: Sequence[int], scores: Sequence[float], thresholds: Sequence[float] | None = None,
+) -> List[Dict]:
+    """Compute precision/recall/F1 at each of a grid of decision thresholds
+    applied to a fixed set of similarity ``scores``.
+
+    This computes the underlying similarity score for each pair exactly
+    once; sweeping is then just cheap re-thresholding, so it costs almost
+    nothing extra on top of a single fixed-threshold evaluation (the
+    expensive part -- building MinHash signatures / SimHash fingerprints
+    for every pair -- is not repeated per threshold).
+
+    Returns one row per threshold: ``{"threshold", "precision", "recall",
+    "f1", "tp", "fp", "fn", "tn"}``, in ascending threshold order.
     """
-    Benchmark speed of a similarity function.
-    
-    Args:
-        similarity_fn: Function to benchmark
-        text_pairs: List of (text_a, text_b) tuples
-        num_iterations: Number of times to repeat (for averaging)
-    
-    Returns:
-        Dictionary with timing statistics
+    if thresholds is None:
+        thresholds = [round(i / 100, 2) for i in range(0, 101, 2)]
+    rows = []
+    for t in thresholds:
+        preds = [1 if s >= t else 0 for s in scores]
+        metrics = precision_recall_f1(y_true, preds)
+        rows.append({"threshold": t, **metrics})
+    return rows
+
+
+def best_threshold_row(sweep_rows: List[Dict]) -> Dict:
+    """Pick the sweep row with the highest F1 score.
+
+    Ties are broken in favor of the *first* (i.e. lowest) threshold reached
+    while scanning in ascending order, matching the convention used
+    throughout this project's threshold-selection experiments (see
+    docs/project_spec.pdf, "Parameter Selection").
     """
-    total_time = 0.0
-    
-    for iteration in range(num_iterations):
-        start_time = time.time()
-        
-        for text_a, text_b in text_pairs:
-            _ = similarity_fn(text_a, text_b)
-        
-        end_time = time.time()
-        total_time += (end_time - start_time)
-    
-    avg_time = total_time / num_iterations
-    pairs_per_second = len(text_pairs) / avg_time if avg_time > 0 else 0.0
-    
-    return {
-        'total_time_seconds': total_time,
-        'average_time_seconds': avg_time,
-        'pairs_per_second': pairs_per_second,
-        'num_pairs': len(text_pairs),
-        'num_iterations': num_iterations
-    }
+    best = None
+    for row in sweep_rows:
+        if best is None or row["f1"] > best["f1"]:
+            best = row
+    return best
+
+
+# --------------------------------------------------------------------------- #
+# Pipeline runners
+# --------------------------------------------------------------------------- #
+
+@dataclass
+class PipelineResult:
+    method: str
+    predictions: List[int]
+    elapsed_seconds: float
+    extra: Dict[str, float] = field(default_factory=dict)
+
+
+@dataclass
+class SimilarityScores:
+    """Raw per-pair similarity scores for one method, computed once and
+    reusable both for a fixed-threshold evaluation and for a threshold
+    sweep (see :func:`sweep_thresholds`)."""
+    method: str
+    scores: List[float]
+    elapsed_seconds: float
+    extra: Dict[str, float] = field(default_factory=dict)
+
+
+def compute_minhash_similarities(
+    pairs_df: pd.DataFrame,
+    text_col_a: str,
+    text_col_b: str,
+    shingle_size: int = 3,
+    num_perm: int = 128,
+    num_bands: int = 32,
+    compute_lsh_candidates: bool = True,
+) -> SimilarityScores:
+    """Compute the MinHash-estimated Jaccard similarity for every pair,
+    without applying any decision threshold. ``compute_lsh_candidates``
+    additionally records, per pair, whether the two documents would have
+    landed in the same LSH bucket (a diagnostic separate from the
+    similarity score itself, reported as ``lsh_candidate_rate``)."""
+    hasher = MinHasher(num_perm=num_perm, seed=42)
+    scores: List[float] = []
+    lsh_candidate_flags: List[int] = []
+
+    start = time.perf_counter()
+    for text_a, text_b in zip(pairs_df[text_col_a], pairs_df[text_col_b]):
+        doc_a = preprocessing.preprocess_document(text_a, shingle_size=shingle_size)
+        doc_b = preprocessing.preprocess_document(text_b, shingle_size=shingle_size)
+
+        sig_a = hasher.signature(doc_a.shingles)
+        sig_b = hasher.signature(doc_b.shingles)
+        scores.append(estimate_jaccard(sig_a, sig_b))
+
+        if compute_lsh_candidates:
+            index = LSHIndex(num_perm=num_perm, num_bands=num_bands)
+            index.insert("a", sig_a)
+            index.insert("b", sig_b)
+            lsh_candidate_flags.append(1 if "b" in index.query_candidates("a") else 0)
+    elapsed = time.perf_counter() - start
+
+    extra = {}
+    if compute_lsh_candidates and lsh_candidate_flags:
+        extra["lsh_candidate_rate"] = sum(lsh_candidate_flags) / len(lsh_candidate_flags)
+
+    return SimilarityScores(method="minhash_lsh", scores=scores, elapsed_seconds=elapsed, extra=extra)
+
+
+def compute_simhash_similarities(
+    pairs_df: pd.DataFrame,
+    text_col_a: str,
+    text_col_b: str,
+    hash_bits: int = 64,
+) -> SimilarityScores:
+    """Compute the TF-IDF weighted SimHash Hamming similarity for every
+    pair, without applying any decision threshold."""
+    scores: List[float] = []
+
+    start = time.perf_counter()
+    for text_a, text_b in zip(pairs_df[text_col_a], pairs_df[text_col_b]):
+        tokens_a = preprocessing.remove_stopwords(preprocessing.tokenize(text_a))
+        tokens_b = preprocessing.remove_stopwords(preprocessing.tokenize(text_b))
+
+        hasher = TfidfSimHasher(hash_bits=hash_bits)
+        hasher.fit([tokens_a, tokens_b])
+
+        fp_a = hasher.fingerprint(tokens_a)
+        fp_b = hasher.fingerprint(tokens_b)
+        scores.append(hamming_similarity(fp_a, fp_b, bits=hash_bits))
+    elapsed = time.perf_counter() - start
+
+    return SimilarityScores(method="simhash", scores=scores, elapsed_seconds=elapsed)
+
+
+def run_minhash_lsh_pipeline(
+    pairs_df: pd.DataFrame,
+    text_col_a: str,
+    text_col_b: str,
+    shingle_size: int = 3,
+    num_perm: int = 128,
+    num_bands: int = 32,
+    similarity_threshold: float = 0.5,
+) -> PipelineResult:
+    """Run the Shingling + MinHash + LSH pipeline over a pair dataset and
+    threshold the resulting similarity scores at ``similarity_threshold``.
+
+    A thin wrapper around :func:`compute_minhash_similarities`; kept as a
+    separate function (rather than inlining the threshold step everywhere)
+    for backward compatibility with existing callers/tests.
+    """
+    result = compute_minhash_similarities(
+        pairs_df, text_col_a, text_col_b,
+        shingle_size=shingle_size, num_perm=num_perm, num_bands=num_bands,
+    )
+    predictions = [1 if s >= similarity_threshold else 0 for s in result.scores]
+    return PipelineResult(
+        method="minhash_lsh", predictions=predictions,
+        elapsed_seconds=result.elapsed_seconds, extra=result.extra,
+    )
+
+
+def run_simhash_pipeline(
+    pairs_df: pd.DataFrame,
+    text_col_a: str,
+    text_col_b: str,
+    hash_bits: int = 64,
+    hamming_similarity_threshold: float = 0.85,
+) -> PipelineResult:
+    """Run the TF-IDF weighted SimHash pipeline over a pair dataset and
+    threshold the resulting similarity scores at
+    ``hamming_similarity_threshold``.
+
+    IDF statistics are fit per-pair over the two documents in that pair
+    (matching the "compare two documents" use case) rather than over the
+    whole dataset at once, so this function has no cross-row leakage and
+    scales identically to the MinHash pipeline above. See the technical
+    report for a discussion of this design choice and its trade-offs.
+
+    A thin wrapper around :func:`compute_simhash_similarities`; kept as a
+    separate function for backward compatibility with existing
+    callers/tests.
+    """
+    result = compute_simhash_similarities(pairs_df, text_col_a, text_col_b, hash_bits=hash_bits)
+    predictions = [1 if s >= hamming_similarity_threshold else 0 for s in result.scores]
+    return PipelineResult(method="simhash", predictions=predictions, elapsed_seconds=result.elapsed_seconds)
+
+
+def evaluate_pairs(
+    pairs_df: pd.DataFrame,
+    text_col_a: str,
+    text_col_b: str,
+    label_col: str,
+    shingle_size: int = 3,
+    num_perm: int = 128,
+    num_bands: int = 32,
+    minhash_threshold: float = 0.5,
+    hash_bits: int = 64,
+    simhash_threshold: float = 0.85,
+    auto_threshold: bool = False,
+    threshold_grid: Sequence[float] | None = None,
+) -> Tuple[List[Dict], Dict[str, List[Dict]]]:
+    """Run both pipelines over ``pairs_df`` and return one metrics row per
+    method, ready to be written to ``outputs/metrics.csv``.
+
+    If ``auto_threshold`` is True, ``minhash_threshold`` / ``simhash_threshold``
+    are ignored; instead, each method's similarity scores are computed once
+    and then swept across ``threshold_grid`` (default: 0.00 to 1.00 in steps
+    of 0.02) to find the threshold that maximizes F1 on this dataset (see
+    :func:`sweep_thresholds`). The chosen threshold is recorded in the
+    returned row as ``"threshold_used"`` so results stay reproducible.
+
+    Returns ``(rows, sweep_curves)`` where ``sweep_curves`` maps method name
+    to its full list of ``{threshold, precision, recall, f1, ...}`` rows
+    (empty dict if ``auto_threshold`` is False) -- useful for writing a
+    diagnostic sweep CSV or plotting a precision/recall-vs-threshold curve.
+    """
+    y_true = pairs_df[label_col].astype(int).tolist()
+
+    minhash_scores = compute_minhash_similarities(
+        pairs_df, text_col_a, text_col_b,
+        shingle_size=shingle_size, num_perm=num_perm, num_bands=num_bands,
+    )
+    simhash_scores = compute_simhash_similarities(
+        pairs_df, text_col_a, text_col_b, hash_bits=hash_bits,
+    )
+
+    sweep_curves: Dict[str, List[Dict]] = {}
+    fixed_thresholds = {"minhash_lsh": minhash_threshold, "simhash": simhash_threshold}
+    thresholds_used: Dict[str, float] = {}
+
+    rows = []
+    for result in (minhash_scores, simhash_scores):
+        if auto_threshold:
+            sweep_rows = sweep_thresholds(y_true, result.scores, thresholds=threshold_grid)
+            sweep_curves[result.method] = sweep_rows
+            chosen = best_threshold_row(sweep_rows)
+            threshold_used = chosen["threshold"]
+            metrics = chosen
+        else:
+            threshold_used = fixed_thresholds[result.method]
+            predictions = [1 if s >= threshold_used else 0 for s in result.scores]
+            metrics = precision_recall_f1(y_true, predictions)
+        thresholds_used[result.method] = threshold_used
+
+        row = {
+            "method": result.method,
+            "num_pairs": len(y_true),
+            "threshold_used": threshold_used,
+            "precision": round(metrics["precision"], 4),
+            "recall": round(metrics["recall"], 4),
+            "f1": round(metrics["f1"], 4),
+            "true_positive": metrics["tp"],
+            "false_positive": metrics["fp"],
+            "false_negative": metrics["fn"],
+            "true_negative": metrics["tn"],
+            "total_time_seconds": round(result.elapsed_seconds, 4),
+            "avg_time_per_pair_ms": round(
+                1000 * result.elapsed_seconds / len(y_true), 4
+            )
+            if y_true
+            else 0.0,
+        }
+        row.update({k: round(v, 4) for k, v in result.extra.items()})
+        rows.append(row)
+
+    return rows, sweep_curves

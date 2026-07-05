@@ -1,2 +1,11 @@
-numpy>=2.2.0
-pandas>=3.0.0
+# Core runtime dependencies
+numpy>=1.24
+pandas>=2.0
+click>=8.1
+
+# Testing (used by `pytest` per the README's "Running the tests" section)
+pytest>=7.4
+
+# Optional: only needed to execute notebooks/exploration.ipynb
+# jupyter>=1.0
+# matplotlib>=3.7

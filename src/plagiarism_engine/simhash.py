@@ -1,381 +1,175 @@
-# src/simhash.py
 """
-SimHash implementation for document similarity detection.
+simhash.py
+==========
 
-Based on DM_P3_Guide.pdf (Page 3):
-- Documents are transformed into tokens/n-grams
-- Each token is weighted by TF-IDF
-- Using 64-bit hash, weighted contributions accumulate into 64-dimensional vector
-- Final bit in each dimension determined by sign of accumulated value
-- Similar documents have small Hamming distance
+From-scratch, TF-IDF weighted SimHash implementation (Charikar, 2002).
+
+Unlike MinHash/LSH, SimHash produces a single fixed-width fingerprint per
+document such that similar documents have fingerprints at small Hamming
+distance, so a duplicate/near-duplicate test reduces to a bit-count
+comparison rather than set operations.
+
+Algorithm
+---------
+For a document represented as a bag of weighted tokens ``{term: weight}``:
+
+    1. Initialise a 64-dimensional accumulator vector V = 0.
+    2. For each term, compute a stable 64-bit hash of the term.
+    3. For each of the 64 bit positions:
+           if the bit is 1: V[bit] += weight
+           else:            V[bit] -= weight
+    4. The final fingerprint bit ``i`` is 1 if V[i] > 0, else 0.
+
+The "weight" of a term is its TF-IDF score with respect to the corpus the
+document belongs to, computed from scratch below (smoothed IDF, following
+the common ``ln((1 + N) / (1 + df)) + 1`` convention so that terms
+appearing in every document still get a small positive weight instead of
+zero).
 """
 
-import numpy as np
-from typing import List, Dict, Set, Tuple, Optional
-from collections import Counter
-import re
+from __future__ import annotations
+
+import hashlib
+import math
+from collections import Counter, defaultdict
+from typing import Dict, Iterable, List, Sequence
+
+HASH_BITS = 64
 
 
-class SimHash:
+def stable_hash_64(token: str) -> int:
+    """Deterministic 64-bit hash of a token, stable across processes.
+
+    Uses BLAKE2b (stdlib, no extra dependency) rather than Python's
+    built-in ``hash()``, which is randomized per-process.
     """
-    SimHash fingerprint generator for documents.
-    
-    SimHash creates a compact binary fingerprint (64 bits) that preserves
-    similarity: similar documents have similar fingerprints (small Hamming distance).
+    digest = hashlib.blake2b(token.encode("utf-8"), digest_size=8).digest()
+    return int.from_bytes(digest, byteorder="big", signed=False)
+
+
+class TfidfVectorizerFromScratch:
+    """Minimal from-scratch TF-IDF computation (no scikit-learn).
+
+    Fit once on a corpus (a list of token lists) to learn document
+    frequencies, then compute per-document TF-IDF weight dictionaries.
     """
-    
-    HASH_BITS = 64  # 64-bit hash as per guide
-    
-    def __init__(self, use_tfidf: bool = True):
-        """
-        Initialize SimHash generator.
-        
-        Args:
-            use_tfidf: Whether to use TF-IDF weighting (default: True as per guide)
-        """
-        self.use_tfidf = use_tfidf
-        
-        # For TF-IDF calculation
-        self.document_count = 0
-        self.token_doc_count: Dict[str, int] = {}  # How many docs contain each token
-    
-    def _hash_token(self, token: str) -> int:
-        """
-        Hash a token to a 64-bit integer.
-        
-        Args:
-            token: Input token string
-            
-        Returns:
-            64-bit hash value
-        """
-        # Use Python's built-in hash and mask to 64 bits
-        h = hash(token)
-        return h & ((1 << self.HASH_BITS) - 1)
-    
-    def _get_bit(self, hash_value: int, bit_position: int) -> int:
-        """
-        Extract a specific bit from hash value.
-        
-        Args:
-            hash_value: 64-bit hash
-            bit_position: Position (0-63)
-            
-        Returns:
-            1 if bit is set, -1 if not (for accumulation)
-        """
-        if (hash_value >> bit_position) & 1:
-            return 1
-        else:
-            return -1
-    
-    def tokenize(self, text: str) -> List[str]:
-        """
-        Tokenize text into words.
-        
-        Args:
-            text: Input text
-            
-        Returns:
-            List of tokens
-        """
-        # Clean and lowercase
-        text = text.lower()
-        text = re.sub(r'[^\w\s]', ' ', text)
-        text = re.sub(r'\s+', ' ', text).strip()
-        
-        # Split into tokens
-        tokens = text.split()
-        
-        return tokens
-    
-    def compute_tf(self, tokens: List[str]) -> Dict[str, float]:
-        """
-        Compute term frequency for tokens.
-        
-        Args:
-            tokens: List of tokens
-            
-        Returns:
-            Dictionary mapping token to TF score
-        """
+
+    def __init__(self):
+        self._doc_freq: Dict[str, int] = {}
+        self._n_docs: int = 0
+        self._fitted = False
+
+    def fit(self, tokenized_docs: Iterable[Sequence[str]]) -> "TfidfVectorizerFromScratch":
+        doc_freq: Dict[str, int] = defaultdict(int)
+        n_docs = 0
+        for tokens in tokenized_docs:
+            n_docs += 1
+            for term in set(tokens):
+                doc_freq[term] += 1
+        self._doc_freq = dict(doc_freq)
+        self._n_docs = n_docs
+        self._fitted = True
+        return self
+
+    def _idf(self, term: str) -> float:
+        # Smoothed IDF: ln((1 + N) / (1 + df)) + 1.
+        # Guarantees a positive weight even for terms in every document,
+        # and a sensible fallback (the maximum possible IDF for this
+        # corpus) for out-of-vocabulary terms seen only at inference time.
+        n = max(self._n_docs, 1)
+        df = self._doc_freq.get(term)
+        if df is None:
+            df = 0  # unseen term: treat as rarer than anything seen
+        return math.log((1 + n) / (1 + df)) + 1.0
+
+    def transform(self, tokens: Sequence[str]) -> Dict[str, float]:
+        """Return a {term: tf_idf_weight} dict for one document's tokens."""
         if not tokens:
             return {}
-        
-        token_counts = Counter(tokens)
-        total_tokens = len(tokens)
-        
-        # TF = count / total
-        tf = {token: count / total_tokens for token, count in token_counts.items()}
-        
-        return tf
-    
-    def compute_idf(self, token: str, total_docs: int) -> float:
+        tf_counts = Counter(tokens)
+        total_terms = sum(tf_counts.values())
+        weights = {}
+        for term, count in tf_counts.items():
+            tf = count / total_terms
+            weights[term] = tf * self._idf(term)
+        return weights
+
+
+class TfidfSimHasher:
+    """Computes TF-IDF weighted SimHash fingerprints.
+
+    Parameters
+    ----------
+    hash_bits:
+        Fingerprint width. Fixed at 64 per the project specification.
+    ngram_size:
+        Size of the token n-grams fed into the hasher. ``1`` (unigrams)
+        is the default; larger values make the fingerprint more sensitive
+        to local word order, similar to the shingle size used for MinHash.
+    """
+
+    def __init__(self, hash_bits: int = HASH_BITS, ngram_size: int = 1):
+        self.hash_bits = hash_bits
+        self.ngram_size = ngram_size
+        self.vectorizer = TfidfVectorizerFromScratch()
+        self._fitted = False
+
+    @staticmethod
+    def _ngrams(tokens: Sequence[str], n: int) -> List[str]:
+        if n <= 1:
+            return list(tokens)
+        if len(tokens) < n:
+            return [" ".join(tokens)] if tokens else []
+        return [" ".join(tokens[i : i + n]) for i in range(len(tokens) - n + 1)]
+
+    def fit(self, tokenized_docs: Iterable[Sequence[str]]) -> "TfidfSimHasher":
+        """Fit IDF statistics over a corpus of already-tokenized documents."""
+        ngram_docs = [self._ngrams(list(tokens), self.ngram_size) for tokens in tokenized_docs]
+        self.vectorizer.fit(ngram_docs)
+        self._fitted = True
+        return self
+
+    def fingerprint(self, tokens: Sequence[str]) -> int:
+        """Compute the SimHash fingerprint for one document's tokens.
+
+        If :meth:`fit` was never called, falls back to a single-document
+        "corpus" of just this document (equivalent to plain TF weighting),
+        which keeps the two-document ``compare`` CLI command usable without
+        requiring a full corpus.
         """
-        Compute inverse document frequency for a token.
-        
-        Args:
-            token: Token string
-            total_docs: Total number of documents
-            
-        Returns:
-            IDF score
-        """
-        if total_docs == 0:
-            return 0.0
-        
-        # Number of documents containing this token
-        doc_count = self.token_doc_count.get(token, 0)
-        
-        if doc_count == 0:
-            return 0.0
-        
-        # IDF = log(N / df)
-        idf = np.log(total_docs / doc_count)
-        
-        return idf
-    
-    def compute_tfidf(self, tokens: List[str]) -> Dict[str, float]:
-        """
-        Compute TF-IDF weights for tokens.
-        
-        Args:
-            tokens: List of tokens
-            
-        Returns:
-            Dictionary mapping token to TF-IDF weight
-        """
-        tf = self.compute_tf(tokens)
-        
-        if not self.use_tfidf or self.document_count == 0:
-            # Just use TF
-            return tf
-        
-        # Compute TF-IDF
-        tfidf = {}
-        for token, tf_score in tf.items():
-            idf = self.compute_idf(token, self.document_count)
-            tfidf[token] = tf_score * idf
-        
-        return tfidf
-    
-    def compute_fingerprint(self, text: str, tokens: Optional[List[str]] = None) -> int:
-        """
-        Compute SimHash fingerprint for text.
-        
-        According to the guide (Page 3):
-        1. Tokenize document
-        2. Compute TF-IDF for each token
-        3. For each token, hash to 64 bits
-        4. Accumulate weighted contributions into 64-dimensional vector
-        5. Final bit determined by sign of accumulated value
-        
-        Args:
-            text: Input text
-            tokens: Pre-computed tokens (optional, will tokenize if None)
-            
-        Returns:
-            64-bit SimHash fingerprint
-        """
-        if tokens is None:
-            tokens = self.tokenize(text)
-        
-        if not tokens:
+        if not self._fitted:
+            self.vectorizer.fit([self._ngrams(list(tokens), self.ngram_size)])
+            self._fitted = True
+
+        terms = self._ngrams(list(tokens), self.ngram_size)
+        weights = self.vectorizer.transform(terms)
+
+        if not weights:
             return 0
-        
-        # Compute weights (TF-IDF or just TF)
-        weights = self.compute_tfidf(tokens)
-        
-        # Initialize accumulator vector (64 dimensions)
-        accumulator = np.zeros(self.HASH_BITS, dtype=np.float64)
-        
-        # For each unique token
-        for token, weight in weights.items():
-            # Hash the token
-            token_hash = self._hash_token(token)
-            
-            # For each bit position
-            for bit_pos in range(self.HASH_BITS):
-                # Get bit value (+1 or -1)
-                bit_value = self._get_bit(token_hash, bit_pos)
-                
-                # Accumulate weighted contribution
-                accumulator[bit_pos] += weight * bit_value
-        
-        # Generate final fingerprint based on sign
+
+        accumulator = [0.0] * self.hash_bits
+        for term, weight in weights.items():
+            h = stable_hash_64(term)
+            for bit in range(self.hash_bits):
+                if (h >> bit) & 1:
+                    accumulator[bit] += weight
+                else:
+                    accumulator[bit] -= weight
+
         fingerprint = 0
-        for bit_pos in range(self.HASH_BITS):
-            if accumulator[bit_pos] >= 0:
-                # Set bit to 1
-                fingerprint |= (1 << bit_pos)
-        
+        for bit in range(self.hash_bits):
+            if accumulator[bit] > 0:
+                fingerprint |= 1 << bit
         return fingerprint
-    
-    def hamming_distance(self, fp1: int, fp2: int) -> int:
-        """
-        Compute Hamming distance between two fingerprints.
-        
-        Hamming distance = number of differing bits
-        
-        Args:
-            fp1: First fingerprint
-            fp2: Second fingerprint
-            
-        Returns:
-            Hamming distance (0 to 64)
-        """
-        # XOR gives 1 where bits differ
-        xor = fp1 ^ fp2
-        
-        # Count set bits
-        distance = bin(xor).count('1')
-        
-        return distance
-    
-    def similarity(self, fp1: int, fp2: int) -> float:
-        """
-        Compute similarity score from Hamming distance.
-        
-        Similarity = 1 - (hamming_distance / hash_bits)
-        
-        Args:
-            fp1: First fingerprint
-            fp2: Second fingerprint
-            
-        Returns:
-            Similarity score (0.0 to 1.0)
-        """
-        distance = self.hamming_distance(fp1, fp2)
-        return 1.0 - (distance / self.HASH_BITS)
-    
-    def fit(self, documents: List[str]) -> None:
-        """
-        Fit the SimHash model on a corpus for TF-IDF calculation.
-        
-        Args:
-            documents: List of document texts
-        """
-        self.document_count = len(documents)
-        self.token_doc_count.clear()
-        
-        # Count how many documents contain each token
-        for doc in documents:
-            tokens = self.tokenize(doc)
-            unique_tokens = set(tokens)
-            
-            for token in unique_tokens:
-                self.token_doc_count[token] = self.token_doc_count.get(token, 0) + 1
 
 
-class SimHashIndex:
-    """
-    Index for managing multiple SimHash fingerprints.
-    """
-    
-    def __init__(self, use_tfidf: bool = True):
-        """
-        Initialize SimHash index.
-        
-        Args:
-            use_tfidf: Whether to use TF-IDF weighting
-        """
-        self.simhash = SimHash(use_tfidf=use_tfidf)
-        self.fingerprints: Dict[str, int] = {}
-        self.doc_ids: List[str] = []
-    
-    def fit(self, documents: Dict[str, str]) -> None:
-        """
-        Fit the index on a corpus for TF-IDF.
-        
-        Args:
-            documents: Dictionary mapping doc_id to text
-        """
-        self.simhash.fit(list(documents.values()))
-    
-    def add_document(self, doc_id: str, text: str) -> None:
-        """
-        Add a document to the index.
-        
-        Args:
-            doc_id: Unique document identifier
-            text: Document text
-        """
-        fingerprint = self.simhash.compute_fingerprint(text)
-        self.fingerprints[doc_id] = fingerprint
-        
-        if doc_id not in self.doc_ids:
-            self.doc_ids.append(doc_id)
-    
-    def get_fingerprint(self, doc_id: str) -> Optional[int]:
-        """
-        Get fingerprint for a document.
-        
-        Args:
-            doc_id: Document identifier
-            
-        Returns:
-            Fingerprint or None if not found
-        """
-        return self.fingerprints.get(doc_id)
-    
-    def compare(self, doc_id_a: str, doc_id_b: str) -> float:
-        """
-        Compare two indexed documents.
-        
-        Args:
-            doc_id_a: First document ID
-            doc_id_b: Second document ID
-            
-        Returns:
-            Similarity score (0.0 to 1.0)
-        """
-        fp_a = self.fingerprints.get(doc_id_a)
-        fp_b = self.fingerprints.get(doc_id_b)
-        
-        if fp_a is None or fp_b is None:
-            raise KeyError("One or both documents not found in index")
-        
-        return self.simhash.similarity(fp_a, fp_b)
-    
-    def find_similar(
-        self,
-        doc_id: str,
-        threshold: float = 0.8,
-        max_hamming_distance: Optional[int] = None
-    ) -> List[Tuple[str, float, int]]:
-        """
-        Find similar documents to the given document.
-        
-        Args:
-            doc_id: Target document ID
-            threshold: Minimum similarity threshold
-            max_hamming_distance: Maximum Hamming distance (optional)
-            
-        Returns:
-            List of (doc_id, similarity, hamming_distance) tuples, sorted by similarity
-        """
-        target_fp = self.fingerprints.get(doc_id)
-        if target_fp is None:
-            raise KeyError(f"Document {doc_id} not found in index")
-        
-        results = []
-        
-        for other_id in self.doc_ids:
-            if other_id == doc_id:
-                continue
-            
-            other_fp = self.fingerprints[other_id]
-            hamming = self.simhash.hamming_distance(target_fp, other_fp)
-            similarity = self.simhash.similarity(target_fp, other_fp)
-            
-            # Apply filters
-            if max_hamming_distance is not None and hamming > max_hamming_distance:
-                continue
-            
-            if similarity >= threshold:
-                results.append((other_id, similarity, hamming))
-        
-        # Sort by similarity descending
-        results.sort(key=lambda x: x[1], reverse=True)
-        
-        return results
+def hamming_distance(a: int, b: int) -> int:
+    """Number of differing bits between two integer fingerprints."""
+    return bin(a ^ b).count("1")
+
+
+def hamming_similarity(a: int, b: int, bits: int = HASH_BITS) -> float:
+    """Normalized similarity in [0, 1] derived from Hamming distance."""
+    if bits == 0:
+        return 1.0
+    return 1.0 - (hamming_distance(a, b) / bits)

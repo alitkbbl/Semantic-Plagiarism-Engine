@@ -1,32 +1,52 @@
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "Semantic-Plagiarism-Engine"
-version = "0.1.0"
-description = "A command-line engine for detecting near-duplicate and copied documents."
+name = "plagiarism-engine"
+version = "1.0.0"
+description = "Educational semantic duplicate & near-plagiarism detection engine (Shingling+MinHash+LSH vs. TF-IDF weighted SimHash)."
 readme = "README.md"
 requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "Ali" }]
+keywords = [
+    "minhash",
+    "lsh",
+    "simhash",
+    "jaccard-similarity",
+    "plagiarism-detection",
+    "duplicate-detection",
+    "nlp",
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Intended Audience :: Education",
+    "Topic :: Text Processing :: Linguistic",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
 
 dependencies = [
-    "numpy>=1.26.0, <2.2.0",
-    "pandas>=2.2.0, <3.0.0",
+    "numpy>=1.24",
+    "pandas>=2.0",
+    "click>=8.1",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=8.3.0",
-    "black>=24.10.0",
-    "flake8>=7.1.0",
+    "pytest>=7.4",
 ]
+notebook = [
+    "jupyter>=1.0",
+    "matplotlib>=3.7",
+]
+
+[project.scripts]
+plagiarism-engine = "plagiarism_engine.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.pytest.ini_options]
-minversion = "8.3"
-addopts = "-ra -q"
-testpaths = [
-    "tests",
-]
+testpaths = ["tests"]

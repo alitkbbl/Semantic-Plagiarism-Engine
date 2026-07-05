@@ -15,6 +15,8 @@ data/sample_corpus/raw/*
 data/sample_corpus/processed/*
 !data/sample_corpus/raw/.gitkeep
 !data/sample_corpus/processed/.gitkeep
+data/raw/pan-plagiarism-corpus-2011
+src/plagiarism_engine.egg-info
 
 
 # Notebooks checkpoints
