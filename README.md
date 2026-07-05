@@ -2,27 +2,14 @@
 
 An educational, industry-inspired command line system for detecting duplicate, copied, and paraphrased documents. It implements and compares **two independent similarity-detection approaches, built entirely from scratch**:
 
-1. 🧩 **Shingling + MinHash + LSH** — documents are represented as sets of word $k$-shingles; Jaccard similarity is estimated via MinHash signatures and pruned via Locality-Sensitive Hashing (LSH), so a large corpus never needs exhaustive pairwise comparison.
-2. 🔢 **TF-IDF weighted SimHash** — each document is reduced to a single 64-bit fingerprint; similarity is measured as a Hamming-distance bit-count.
+1. **Shingling + MinHash + LSH** — documents are represented as sets of word $k$-shingles; Jaccard similarity is estimated via MinHash signatures and pruned via Locality-Sensitive Hashing (LSH), so a large corpus never needs exhaustive pairwise comparison.
+2. **TF-IDF weighted SimHash** — each document is reduced to a single 64-bit fingerprint; similarity is measured as a Hamming-distance bit-count.
 
 No third-party MinHash/SimHash/LSH library (e.g. `datasketch`) is used for the core algorithms — only the Python standard library, NumPy, and Pandas. This is a **CLI-only** project: no graphical interface, no terminal UI.
 
-📄 **Full technical report** (method, parameter selection, datasets, results, error analysis): [`docs/project_spec.pdf`](docs/Report.pdf)
+📄 **Full technical report** (method, parameter selection, datasets, results, error analysis): [`docs/Report.pdf`](docs/Report.pdf)
+
 📓 **Interactive walkthrough** of every method and CLI command: [`notebooks/exploration.ipynb`](notebooks/exploration.ipynb)
-
----
-
-## 📑 Table of Contents
-
-- [Results at a Glance](#-results-at-a-glance)
-- [Installation](#️-installation)
-- [Quickstart](#-quickstart)
-- [Execution Instructions](#-execution-instructions)
-- [Using the Real PAN-PC-11 Corpus](#-using-the-real-pan-pc-11-corpus)
-- [Running the Tests](#-running-the-tests)
-- [Project Structure](#-project-structure)
-- [Method Summary](#-method-summary)
-- [Recommended Datasets](#-recommended-datasets-for-larger-scale-evaluation)
 
 ---
 
@@ -32,7 +19,6 @@ Validated on three datasets — a hand-curated document corpus, a synthetic labe
 
 | Evaluation | Method | Precision | Recall | F1 |
 |---|---|---:|---:|---:|
-| Sample corpus (11 docs) — LSH candidate generation | — | — | — | **94.55% of pairwise comparisons avoided**, 0 true near-duplicates missed |
 | Synthetic question pairs (60 pairs) | MinHash + LSH | 0.730 | 0.900 | 0.806 |
 | Synthetic question pairs (60 pairs) | TF-IDF SimHash | 0.556 | 1.000 | 0.714 |
 | Real PAN-PC-11 (4,000 pairs, tuned) | MinHash + LSH | 0.971 | 0.875 | **0.920** |
@@ -64,8 +50,6 @@ pip install -e ".[dev]"
 
 This installs the runtime dependencies (`numpy`, `pandas`, `click`), `pytest` for the test suite, and the `plagiarism_engine` package itself in editable mode. A console entry point `plagiarism-engine` is also installed; it is exactly equivalent to `python -m plagiarism_engine.cli`.
 
-> ⚠️ **Already have another copy of this project installed?**
-> `pip install -e .` registers an editable link to whichever folder you run it from. If you've downloaded this project more than once, re-run `pip uninstall -y plagiarism-engine && pip install --no-build-isolation -e .` from the copy you're actually working in, or Python may silently import code from a different, older copy on disk.
 
 ---
 
@@ -140,17 +124,21 @@ Runs **both** backends over every row of a labeled pair CSV (Quora Question Pair
 
 `scripts/prepare_pan_pc11_pairs.py` converts a locally-downloaded copy of the real PAN-PC-11 corpus (raw documents + XML plagiarism annotations, [Zenodo](https://zenodo.org/records/3250095)) into a `pairs`-compatible CSV, with no changes needed to `src/plagiarism_engine/`:
 
+### 1. Confirm the annotation schema against your actual download:
 ```bash
-# 1. Confirm the annotation schema against your actual download:
 python scripts/prepare_pan_pc11_pairs.py \
     --corpus-dir data/raw/pan-plagiarism-corpus-2011/external-detection-corpus --inspect
+```
 
-# 2. Build the labeled pairs CSV:
+### 2. Build the labeled pairs CSV:
+```bash
 python scripts/prepare_pan_pc11_pairs.py \
     --corpus-dir data/raw/pan-plagiarism-corpus-2011/external-detection-corpus \
     --output data/processed/pan_pc11_pairs.csv --feature-name plagiarism
+```
 
-# 3. Evaluate (k=1 recommended — see docs/project_spec.pdf, Section 5.7, for why):
+### 3. Evaluate (k=1 recommended — see docs/project_spec.pdf, Section 5.7, for why):
+```bash
 python -m plagiarism_engine.cli pairs \
     --pairs data/processed/pan_pc11_pairs.csv \
     --text-col-a text_a --text-col-b text_b --label-col label \
@@ -235,11 +223,8 @@ semantic-plagiarism-engine/
 📄 See `docs/project_spec.pdf` for the full write-up: why exact pairwise Jaccard comparison is O(n²), how LSH's banding scheme trades off false positives/negatives, parameter selection for both pipelines (including the automatic threshold-sweep methodology), and a worked error analysis of specific misclassified pairs from both the synthetic and real-corpus experiments.
 
 ---
+## 📝 Summary
+This project implements a semantic plagiarism and near-duplicate detection engine using two independent approaches: Shingling + MinHash + LSH and TF-IDF weighted SimHash.  
+It evaluates the methods on small curated documents, synthetic labeled pairs, and the PAN-PC-11 plagiarism corpus using precision, recall, F1-score, and runtime metrics.  
+The report compares the strengths, limitations, and failure cases of both pipelines in detecting exact, near-exact, and paraphrased textual similarity.
 
-## 📦 Recommended Datasets for Larger-Scale Evaluation
-
-- 🥇 **PAN-PC-11** (PAN 2011 Plagiarism Corpus) — primary recommended dataset, available via [Zenodo](https://zenodo.org/records/3250095). It's a raw document + XML-annotation corpus rather than a simple CSV; see [above](#-using-the-real-pan-pc-11-corpus), `data/raw/README.md`, and `scripts/prepare_pan_pc11_pairs.py`.
-- 🥈 **Stack Exchange Duplicates** — alternative, available on Hugging Face.
-- 🥉 **Quora Question Pairs** — alternative, 400,000+ labeled question pairs, available on Hugging Face / Kaggle.
-
-> Note: none of the large datasets are bundled with the project (see `data/raw/README.md`); only the small synthetic demo file is included so `pairs` is runnable without a network connection.
