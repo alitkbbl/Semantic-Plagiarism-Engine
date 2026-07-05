@@ -1,3 +1,3 @@
 method,num_pairs,threshold_used,precision,recall,f1,true_positive,false_positive,false_negative,true_negative,total_time_seconds,avg_time_per_pair_ms,lsh_candidate_rate
-minhash_lsh,60,0.13,0.7297,0.9,0.806,27,10,3,20,0.024,0.3998,0.4
-simhash,60,0.46,0.5556,1.0,0.7143,30,24,0,6,0.004,0.0665,
+minhash_lsh,60,0.13,0.7297,0.9,0.806,27,10,3,20,0.0241,0.4012,0.4
+simhash,60,0.46,0.5556,1.0,0.7143,30,24,0,6,0.0044,0.0737,

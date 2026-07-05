@@ -432,20 +432,22 @@
 	
 	هر سه جفت کاندیدای نمایان‌شده، در واقع موارد تکراریِ واقعی بودند، و راستی‌آزمایی دقیق، امتیازهای شباهت آن‌ها را به‌طور کامل تأیید کرد (جدول~\ref{tab:candidates}) — این داده‌ها عیناً از فایل \lr{\texttt{outputs/candidates.csv}} استخراج و بازتولید شده‌اند.
 	
-	\begin{table}[H]
-		\centering
-		\caption{محتوای فایل \lr{\texttt{outputs/candidates.csv}} (با آستانه = ۰٫۲۵).}
-		\label{tab:candidates}
-		\begin{tabular}{@{}llrr@{}}
-			\toprule
-			سند الف (\lr{Doc A}) & سند ب (\lr{Doc B}) & جاکارد دقیق & تخمین \lr{MinHash} \\
-			\midrule
-			\lr{doc\_01.txt} & \lr{doc\_03.txt} & 1.0000 & 1.0000 \\
-			\lr{doc\_01.txt} & \lr{doc\_11.txt} & 0.4835 & 0.5312 \\
-			\lr{doc\_03.txt} & \lr{doc\_11.txt} & 0.4835 & 0.5312 \\
-			\bottomrule
-		\end{tabular}
-	\end{table}
+\begin{table}[H]
+	\centering
+	\caption{Content of the \texttt{outputs/candidates.csv} file (with threshold = $0.25$).}
+	\label{tab:candidates}
+	\begin{tabular}{@{}llrr@{}}
+		\toprule
+		Doc A & Doc B & Exact Jaccard & MinHash Estimate \\
+		\midrule
+		doc\_$01$.txt & doc\_$03$.txt & $1.0000$ & $1.0000$ \\
+		doc\_$01$.txt & doc\_$11$.txt & $0.4835$ & $0.5312$ \\
+		doc\_$03$.txt & doc\_$11$.txt & $0.4835$ & $0.5312$ \\
+		\bottomrule
+	\end{tabular}
+\end{table}
+
+
 	
 	به‌طور خاص توجه داشته باشید که جفت‌اسناد با بازنویسی سنگین (یعنی \lr{\texttt{doc\_01.txt}}/\lr{\texttt{doc\_02.txt}} و \lr{\texttt{doc\_04.txt}}/\lr{\texttt{doc\_05.txt}}) در این جدول حضور \emph{ندارند} — دلیل این پدیده در بخش ارزیابی خطاها تحلیل شده است.
 	
@@ -453,21 +455,25 @@
 	
 	اجرای مستقیم فرمان \lr{\texttt{plagiarism\_engine.cli compare}} روی جفت‌های منفرد، رفتار هر دو موتور را در دو سر طیف دشواری به تصویر می‌کشد (جدول~\ref{tab:compare-examples}).
 	
-	\begin{table}[H]
-		\centering
-		\caption{خروجی فرمان \lr{\texttt{compare}} برای چهار جفت‌سندِ نمونه.}
-		\label{tab:compare-examples}
+\begin{table}[H]
+	\centering
+	\caption{Output of the \texttt{compare} command for four sample document pairs.}
+	\label{tab:compare-examples}
+	\resizebox{\textwidth}{!}{%
 		\begin{tabular}{@{}lrrrr@{}}
 			\toprule
-			جفت‌سند & جاکارد دقیق & تخمین \lr{MinHash} & کاندیدای \lr{LSH} & شباهت همینگ \lr{SimHash} \\
+			Document Pair & Exact Jaccard & MinHash Estimate & LSH Candidate & SimHash Similarity \\
 			\midrule
-			doc\_01 / doc\_03 (کپی واژه‌به‌واژه) & 1.0000 & 1.0000 & بلی & 1.0000 \\
-			doc\_01 / doc\_11 (ویرایش جزئی) & 0.4835 & 0.5312 & بلی & 0.8125 \\
-			doc\_01 / doc\_02 (بازنویسی سنگین) & 0.0238 & 0.0312 & خیر & 0.6875 \\
-			doc\_04 / doc\_05 (بازنویسی سنگین) & 0.0183 & 0.0156 & خیر & 0.6406 \\
+			doc\_$01$ / doc\_$03$ (verbatim copy) & $1.0000$ & $1.0000$ & Yes & $1.0000$ \\
+			doc\_$01$ / doc\_$11$ (minor edit) & $0.4835$ & $0.5312$ & Yes & $0.8125$ \\
+			doc\_$01$ / doc\_$02$ (heavy rewrite) & $0.0238$ & $0.0312$ & No & $0.6875$ \\
+			doc\_$04$ / doc\_$05$ (heavy rewrite) & $0.0183$ & $0.0156$ & No & $0.6406$ \\
 			\bottomrule
-		\end{tabular}
-	\end{table}
+		\end{tabular}%
+	}
+\end{table}
+
+
 	
 	در تمامی حالات، تخمین \lr{MinHash} بسیار نزدیک به شباهت دقیق جاکارد عمل می‌کند (میانگین خطای مطلق برابر با $0.0021$ در تمامی ۵۵ جفت پیکره که در فایل \lr{\texttt{notebooks/exploration.ipynb}} محاسبه شده است)، که این امر تأیید می‌کند برآوردگر دقیقاً مطابق با پیش‌بینی تئوری رفتار می‌کند. در مقابل، شباهت همینگ در الگوریتم \lr{SimHash} تحت شرایط بازنویسی سنگین، رفتار بسیار ملایم‌تر و منعطف‌تری دارد (افت به بازه‌ی ۰٫۶۴ تا ۰٫۶۹ به‌جای فروپاشی به نزدیک صفر)؛ چرا که این روش روی یک \emph{کیسه‌ی کلماتِ وزن‌دار} کار می‌کند و نه روی $k$-گرام‌های پیوسته و دقیق؛ بنابراین تا زمانی که واژگان زیربنایی تا حد زیادی حفظ شده باشند، این الگوریتم در برابر تغییر ترتیب جملات و تغییرات نگارشی محلی مقاوم باقی می‌ماند (\lr{Graceful Degradation}).
 	
@@ -496,17 +502,19 @@
 	
 \begin{table}[H]
 	\centering
-	\caption{دقت، فراخوانی، \lr{F1} و شمارش نتایج روی مجموعه‌داده‌ی مصنوعیِ ۶۰ جفتی. بازتولید عین‌به‌عین از فایل \lr{\texttt{outputs/metrics.csv}}.}
+	\caption{Precision, Recall, F1 score, and result counts on the $60$-pair synthetic dataset. Exact reproduction from the \texttt{outputs/metrics.csv} file.}
 	\label{tab:pairs-metrics}
 	\begin{tabular}{@{}lrrrr@{}}
 		\toprule
-		روش & دقت & فراخوانی & امتیاز \lr{F1} & TP/FP/FN/TN \\
+		Method & Precision & Recall & F1 Score & TP/FP/FN/TN \\
 		\midrule
-		MinHash+LSH & 0.7297 & 0.9000 & 0.8060 & 27/10/3/20 \\
-		TF-IDF SimHash & 0.5556 & 1.0000 & 0.7143 & 30/24/0/6 \\
+		MinHash+LSH & $0.7297$ & $0.9000$ & $0.8060$ & $27/10/3/20$ \\
+		TF-IDF SimHash & $0.5556$ & $1.0000$ & $0.7143$ & $30/24/0/6$ \\
 		\bottomrule
 	\end{tabular}
 \end{table}
+
+
 	
 	\begin{figure}[H]
 		\centering
@@ -522,23 +530,25 @@
 	
 	مجموعه‌داده‌ی ۴٬۰۰۰ جفتیِ \lr{PAN-PC-11} که در بخش~\ref{sec:pan-pc11-dataset} ساخته شد، به سه روش مورد ارزیابی قرار گرفت تا اثرِ اندازه شینگل از اثرِ تنظیم و کالیبره‌سازیِ آستانه تفکیک شود:
 	
-	\begin{table}[H]
-		\centering
-		\caption{عملکرد \lr{MinHash+LSH} و \lr{SimHash} روی مجموعه‌ی ارزیابی واقعی و ۴٬۰۰۰ جفتی \lr{PAN-PC-11}، در دو حالت: اندازه شینگل و آستانه‌ی ثابت (پیشنهادی مشخصات پروژه) در برابر آستانه و شینگلِ جاروب‌شده.}
-		\label{tab:pan-pc11-results}
-		\begin{tabular}{@{}llrrrr@{}}
-			\toprule
-			پیکربندی & روش & آستانه‌ی مورد استفاده & دقت & فراخوانی & امتیاز \lr{F1} \\
-			\midrule
-			$k=3$، ثابت (۰٫۵ / ۰٫۸۵) & MinHash+LSH   & 0.50 & 1.0000 & 0.0360 & 0.0695 \\
-			$k=3$، ثابت (۰٫۵ / ۰٫۸۵) & TF-IDF SimHash & 0.85 & 1.0000 & 0.0725 & 0.1352 \\
-			$k=3$، همراه با \lr{\texttt{--sweep}}   & MinHash+LSH   & 0.00 & 0.5000 & 1.0000 & 0.6667 \\
-			$k=3$، همراه با \lr{\texttt{--sweep}}   & TF-IDF SimHash & 0.58 & 0.8389 & 0.7445 & 0.7889 \\
-			$k=1$، همراه با \lr{\texttt{--sweep}}   & MinHash+LSH   & 0.10 & 0.9706 & 0.8745 & 0.9200 \\
-			$k=1$، همراه با \lr{\texttt{--sweep}}   & TF-IDF SimHash & 0.58 & 0.8389 & 0.7445 & 0.7889 \\
-			\bottomrule
-		\end{tabular}
-	\end{table}
+\begin{table}[H]
+	\centering
+	\caption{Performance of MinHash+LSH and SimHash on the $4,000$-pair real-world evaluation dataset (PAN-PC-11), comparing two settings: fixed shingle size and threshold (suggested by project specifications) versus swept threshold and shingle.}
+	\label{tab:pan-pc11-results}
+	\begin{tabular}{@{}llrrrr@{}}
+		\toprule
+		Configuration & Method & Applied Threshold & Precision & Recall & F1 Score \\
+		\midrule
+		$k=3$, fixed ($0.5 / 0.85$) & MinHash+LSH   & $0.50$ & $1.0000$ & $0.0360$ & $0.0695$ \\
+		$k=3$, fixed ($0.5 / 0.85$) & TF-IDF SimHash & $0.85$ & $1.0000$ & $0.0725$ & $0.1352$ \\
+		$k=3$, with \texttt{--sweep}   & MinHash+LSH   & $0.00$ & $0.5000$ & $1.0000$ & $0.6667$ \\
+		$k=3$, with \texttt{--sweep}   & TF-IDF SimHash & $0.58$ & $0.8389$ & $0.7445$ & $0.7889$ \\
+		$k=1$, with \texttt{--sweep}   & MinHash+LSH   & $0.10$ & $0.9706$ & $0.8745$ & $0.9200$ \\
+		$k=1$, with \texttt{--sweep}   & TF-IDF SimHash & $0.58$ & $0.8389$ & $0.7445$ & $0.7889$ \\
+		\bottomrule
+	\end{tabular}
+\end{table}
+
+
 	
 	\begin{figure}[H]
 		\centering
