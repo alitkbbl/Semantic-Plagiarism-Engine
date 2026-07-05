@@ -1,30 +1,30 @@
 {
   "file_a": "data/sample_corpus/doc_01.txt",
-  "file_b": "data/sample_corpus/doc_02.txt",
+  "file_b": "data/sample_corpus/doc_11.txt",
   "preprocessing": {
     "shingle_size": 3,
     "tokens_a": 66,
-    "tokens_b": 67,
+    "tokens_b": 73,
     "shingles_a": 64,
-    "shingles_b": 65
+    "shingles_b": 71
   },
   "shingling_minhash_lsh": {
-    "exact_jaccard_similarity": 0.02381,
-    "minhash_estimated_similarity": 0.03125,
+    "exact_jaccard_similarity": 0.483516,
+    "minhash_estimated_similarity": 0.53125,
     "num_perm": 128,
     "num_bands": 32,
     "rows_per_band": 4,
-    "lsh_candidate_pair": false,
+    "lsh_candidate_pair": true,
     "lsh_approx_detection_threshold": 0.4204,
-    "exact_jaccard_time_seconds": 8e-06,
-    "minhash_time_seconds": 0.003176
+    "exact_jaccard_time_seconds": 6e-06,
+    "minhash_time_seconds": 0.00218
   },
   "tfidf_simhash": {
     "hash_bits": 64,
-    "fingerprint_a_hex": "6726077fc81df59b",
-    "fingerprint_b_hex": "710624772c1ebffa",
-    "hamming_distance": 20,
-    "hamming_similarity": 0.6875,
-    "simhash_time_seconds": 0.000859
+    "fingerprint_a_hex": "6726077fe81df59b",
+    "fingerprint_b_hex": "7d0625dfca5db59b",
+    "hamming_distance": 12,
+    "hamming_similarity": 0.8125,
+    "simhash_time_seconds": 0.000461
   }
 }

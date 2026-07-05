@@ -1,0 +1,2 @@
+doc_a,doc_b,exact_jaccard_similarity,minhash_estimated_similarity
+doc_01.txt,doc_03.txt,1.0,1.0
