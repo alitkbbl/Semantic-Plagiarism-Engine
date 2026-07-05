@@ -32,3 +32,11 @@ Thumbs.db
 .pytest_cache/
 .coverage
 htmlcov/
+
+
+# Report drafts
+*.aux
+*.log
+*.out
+*.toc
+*.gz
