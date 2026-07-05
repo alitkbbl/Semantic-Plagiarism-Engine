@@ -188,10 +188,11 @@ Confirmed on the real 2011 release: the value is `plagiarism` (used in Step 2 be
 
 ### Step 2 — build the labeled pairs CSV
 ```bash
-python scripts/prepare_pan_pc11_pairs.py \
-    --corpus-dir data/raw/pan-plagiarism-corpus-2011/external-detection-corpus \
-    --output data/processed/pan_pc11_pairs.csv \
-    --feature-name plagiarism
+python -m plagiarism_engine.cli pairs \
+    --pairs data/processed/pan_pc11_pairs.csv \
+    --text-col-a text_a --text-col-b text_b --label-col label \
+    --shingle-size 1 --sweep \
+    --output outputs/metrics_pan_pc11.csv
 ```
 
 ```bash
