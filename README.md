@@ -1,4 +1,4 @@
-# Semantic Duplicate & Near-Plagiarism Detection Engine
+# 🔎 Semantic Duplicate & Near-Plagiarism Detection Engine
 
 An educational, industry-inspired command line system for detecting duplicate, copied, and paraphrased documents. It implements and compares **two independent similarity-detection approaches, built entirely from scratch**:
 
@@ -10,6 +10,8 @@ No third-party MinHash/SimHash/LSH library (e.g. `datasketch`) is used for the c
 📄 **Full technical report** (method, parameter selection, datasets, results, error analysis): [`docs/Report.pdf`](docs/Report.pdf)
 
 📓 **Interactive walkthrough** of every method and CLI command: [`notebooks/exploration.ipynb`](notebooks/exploration.ipynb)
+
+📖 **Complete CLI Reference** — every command and flag available in the project's CLI (`plagiarism_engine.cli`) and its companion data-prep script (`scripts/prepare_pan_pc11_pairs.py`): [`CLI_REFERENCE.md`](CLI_REFERENCE.md)
 
 ---
 
@@ -24,7 +26,7 @@ Validated on three datasets — a hand-curated document corpus, a synthetic labe
 | Real PAN-PC-11 (4,000 pairs, tuned) | MinHash + LSH | 0.971 | 0.875 | **0.920** |
 | Real PAN-PC-11 (4,000 pairs, tuned) | TF-IDF SimHash | 0.839 | 0.745 | 0.789 |
 
-✅ Neither method is categorically better — SimHash wins on short questions, MinHash+LSH wins on long, heavily-obfuscated literary spans once the shingle size and decision threshold are tuned to the corpus. See `docs/project_spec.pdf`, Sections 5 and 7, for the full tuning story and an important caveat on the PAN-PC-11 numbers.
+✅ Neither method is categorically better — SimHash wins on short questions, MinHash+LSH wins on long, heavily-obfuscated literary spans once the shingle size and decision threshold are tuned to the corpus. See `docs/Report.pdf`, Sections 5 and 7, for the full tuning story and an important caveat on the PAN-PC-11 numbers.
 
 ---
 
@@ -114,7 +116,7 @@ python -m plagiarism_engine.cli pairs \
 
 Runs **both** backends over every row of a labeled pair CSV (Quora Question Pairs, Stack Exchange Duplicates, a PAN-PC-11-derived pair list — see [below](#-using-the-real-pan-pc-11-corpus) — or the small synthetic demo file shipped at `data/raw/quora/sample_pairs.csv`) and reports precision, recall, F1, and execution time for each, written to `--output`.
 
-💡 Similarity-score distributions vary a lot by document length and by how heavily a dataset's positive pairs are paraphrased/obfuscated, so a fixed decision threshold tuned for one dataset can perform very poorly on another — high precision with collapsed recall is the signature of this, not necessarily a broken similarity measure (see `docs/project_spec.pdf`, Section 5.6). Add `--sweep` to have each method's threshold chosen automatically to maximize F1 on the given dataset instead of guessing (this costs almost nothing extra — similarity scores are computed once and swept cheaply); add `--sweep-output <path>` to also save the full threshold/precision/recall/F1 curve.
+💡 Similarity-score distributions vary a lot by document length and by how heavily a dataset's positive pairs are paraphrased/obfuscated, so a fixed decision threshold tuned for one dataset can perform very poorly on another — high precision with collapsed recall is the signature of this, not necessarily a broken similarity measure (see `docs/Report.pdf`, Section 5.6). Add `--sweep` to have each method's threshold chosen automatically to maximize F1 on the given dataset instead of guessing (this costs almost nothing extra — similarity scores are computed once and swept cheaply); add `--sweep-output <path>` to also save the full threshold/precision/recall/F1 curve.
 
 ℹ️ Run `python -m plagiarism_engine.cli <command> --help` for the full list of tunable options (shingle size, number of MinHash permutations, number of LSH bands, SimHash bit width, decision thresholds, etc.) on any command.
 
@@ -137,7 +139,7 @@ python scripts/prepare_pan_pc11_pairs.py \
     --output data/processed/pan_pc11_pairs.csv --feature-name plagiarism
 ```
 
-### 3. Evaluate (k=1 recommended — see docs/project_spec.pdf, Section 5.7, for why):
+### 3. Evaluate (k=1 recommended — see docs/Report.pdf, Section 5.7, for why):
 ```bash
 python -m plagiarism_engine.cli pairs \
     --pairs data/processed/pan_pc11_pairs.csv \
@@ -202,9 +204,10 @@ semantic-plagiarism-engine/
 │                                # selection, and the real PAN-PC-11 case study
 ├── tests/
 │   └── test_engine.py          # 46 tests
-└── outputs/
-    ├── metrics.csv             # Written by `pairs`
-    └── candidates.csv          # Written by `corpus`
+├── outputs/
+│   ├── metrics.csv             # Written by `pairs`
+│   └── candidates.csv          # Written by `corpus`
+└──
 ```
 
 ---
@@ -220,7 +223,7 @@ semantic-plagiarism-engine/
 | **Strength** | Robust when edits are concentrated (verbatim / lightly-edited copies) | Robust to reordering; strong on very short text |
 | **Weakness** | Struggles when edits are scattered throughout a long passage, unless $k$ is reduced | Still lexical, not truly semantic; sensitive to vocabulary swaps |
 
-📄 See `docs/project_spec.pdf` for the full write-up: why exact pairwise Jaccard comparison is O(n²), how LSH's banding scheme trades off false positives/negatives, parameter selection for both pipelines (including the automatic threshold-sweep methodology), and a worked error analysis of specific misclassified pairs from both the synthetic and real-corpus experiments.
+📄 See `docs/Report.pdf` for the full write-up: why exact pairwise Jaccard comparison is O(n²), how LSH's banding scheme trades off false positives/negatives, parameter selection for both pipelines (including the automatic threshold-sweep methodology), and a worked error analysis of specific misclassified pairs from both the synthetic and real-corpus experiments.
 
 ---
 ## 📝 Summary
