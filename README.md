@@ -7,11 +7,11 @@ An educational, industry-inspired command line system for detecting duplicate, c
 
 No third-party MinHash/SimHash/LSH library (e.g. `datasketch`) is used for the core algorithms — only the Python standard library, NumPy, and Pandas. This is a **CLI-only** project: no graphical interface, no terminal UI.
 
-📄 **Full technical report** (method, parameter selection, datasets, results, error analysis): [`docs/Report.pdf`](docs/Report.pdf)
+📄 **Full technical report** (method, parameter selection, datasets, results, error analysis): [`Report`](docs/Report.pdf)
 
-📓 **Interactive walkthrough** of every method and CLI command: [`notebooks/exploration.ipynb`](notebooks/exploration.ipynb)
+📓 **Interactive walkthrough** of every method and CLI command: [`exploration.ipynb`](notebooks/exploration.ipynb)
 
-📖 **Complete CLI Reference** — every command and flag available in the project's CLI (`plagiarism_engine.cli`) and its companion data-prep script (`scripts/prepare_pan_pc11_pairs.py`): [`CLI_REFERENCE.md`](CLI_REFERENCE.md)
+📖 **Complete CLI Reference** — every command and flag available in the project's CLI (`plagiarism_engine.cli`) and its companion data-prep script (`scripts/prepare_pan_pc11_pairs.py`): [`CLI_REFERENCE`](CLI_REFERENCE.md)
 
 ---
 
