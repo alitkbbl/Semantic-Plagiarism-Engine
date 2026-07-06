@@ -5,7 +5,7 @@ An educational, industry-inspired command line system for detecting duplicate, c
 1. **Shingling + MinHash + LSH** — documents are represented as sets of word $k$-shingles; Jaccard similarity is estimated via MinHash signatures and pruned via Locality-Sensitive Hashing (LSH), so a large corpus never needs exhaustive pairwise comparison.
 2. **TF-IDF weighted SimHash** — each document is reduced to a single 64-bit fingerprint; similarity is measured as a Hamming-distance bit-count.
 
-No third-party MinHash/SimHash/LSH library (e.g. `datasketch`) is used for the core algorithms — only the Python standard library, NumPy, and Pandas. This is a **CLI-only** project: no graphical interface, no terminal UI.
+No third-party MinHash/SimHash/LSH library (e.g. `datasketch`) is used for the core algorithms — only the Python standard library, NumPy, and Pandas.
 
 📄 **Full technical report** (method, parameter selection, datasets, results, error analysis): [`Report`](docs/Report.pdf)
 
@@ -32,7 +32,7 @@ Validated on three datasets — a hand-curated document corpus, a synthetic labe
 
 ## ⚙️ Installation
 
-**Requires Python 3.9+.**
+**Requires Python 3.11+.**
 
 ```bash
 python -m venv .venv
@@ -72,53 +72,6 @@ python -m plagiarism_engine.cli pairs \
     --text-col-a question1 --text-col-b question2 --label-col is_duplicate \
     --shingle-size 1 --sweep --output outputs/metrics.csv
 ```
-
----
-
-## 🖥️ Execution Instructions
-
-The CLI exposes three commands: `compare`, `corpus`, and `pairs`.
-
-### 1️⃣ `compare` — compare two documents
-
-```bash
-python -m plagiarism_engine.cli compare \
-    --file-a data/sample_corpus/doc_01.txt \
-    --file-b data/sample_corpus/doc_02.txt \
-    --output outputs/two_file_compare.json
-```
-
-Prints exact Jaccard similarity, the MinHash-estimated similarity, whether the pair would be flagged as an LSH candidate, and the SimHash Hamming distance/similarity, and (optionally) writes a JSON report.
-
-### 2️⃣ `corpus` — search a folder for near-duplicate documents
-
-```bash
-python -m plagiarism_engine.cli corpus \
-    --data data/sample_corpus \
-    --threshold 0.25 \
-    --shingle-size 3 \
-    --output outputs/candidates.csv
-```
-
-Builds a MinHash+LSH index over every `*.txt` file in `--data`, uses LSH to cut the number of expensive exact-Jaccard comparisons down from the full O(n²) pair set to just the LSH candidate pairs, verifies each candidate with exact Jaccard, and writes the pairs at or above `--threshold` to `--output`. Prints a summary of how many comparisons LSH avoided (94.55% on the bundled sample corpus).
-
-### 3️⃣ `pairs` — evaluate on a labeled pair dataset
-
-```bash
-python -m plagiarism_engine.cli pairs \
-    --pairs data/raw/quora/sample_pairs.csv \
-    --text-col-a question1 \
-    --text-col-b question2 \
-    --label-col is_duplicate \
-    --limit 5000 \
-    --output outputs/metrics.csv
-```
-
-Runs **both** backends over every row of a labeled pair CSV (Quora Question Pairs, Stack Exchange Duplicates, a PAN-PC-11-derived pair list — see [below](#-using-the-real-pan-pc-11-corpus) — or the small synthetic demo file shipped at `data/raw/quora/sample_pairs.csv`) and reports precision, recall, F1, and execution time for each, written to `--output`.
-
-💡 Similarity-score distributions vary a lot by document length and by how heavily a dataset's positive pairs are paraphrased/obfuscated, so a fixed decision threshold tuned for one dataset can perform very poorly on another — high precision with collapsed recall is the signature of this, not necessarily a broken similarity measure (see `docs/Report.pdf`, Section 5.6). Add `--sweep` to have each method's threshold chosen automatically to maximize F1 on the given dataset instead of guessing (this costs almost nothing extra — similarity scores are computed once and swept cheaply); add `--sweep-output <path>` to also save the full threshold/precision/recall/F1 curve.
-
-ℹ️ Run `python -m plagiarism_engine.cli <command> --help` for the full list of tunable options (shingle size, number of MinHash permutations, number of LSH bands, SimHash bit width, decision thresholds, etc.) on any command.
 
 ---
 
@@ -178,8 +131,8 @@ semantic-plagiarism-engine/
 ├── pyproject.toml
 ├── .gitignore
 ├── docs/
-│   ├── project_spec.tex        # Technical report (LaTeX source)
-│   ├── project_spec.pdf        # Technical report (compiled)
+│   ├── Report.tex        # Technical report (LaTeX source)
+│   ├── Report.pdf        # Technical report (compiled)
 │   └── figures/                # Report figures (generated, reproducible)
 ├── data/
 │   ├── sample_corpus/          # Small demo corpus for `compare` / `corpus`
