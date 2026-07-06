@@ -1,11 +1,15 @@
-# 🔎 Semantic Duplicate & Near-Plagiarism Detection Engine
+# Semantic Similarity Engine
+
+<p align="center">
+      <img src="banner.png" alt="Project Banner" width="100%">
+</p>
 
 An educational, industry-inspired command line system for detecting duplicate, copied, and paraphrased documents. It implements and compares **two independent similarity-detection approaches, built entirely from scratch**:
 
 1. **Shingling + MinHash + LSH** — documents are represented as sets of word $k$-shingles; Jaccard similarity is estimated via MinHash signatures and pruned via Locality-Sensitive Hashing (LSH), so a large corpus never needs exhaustive pairwise comparison.
 2. **TF-IDF weighted SimHash** — each document is reduced to a single 64-bit fingerprint; similarity is measured as a Hamming-distance bit-count.
 
-No third-party MinHash/SimHash/LSH library (e.g. `datasketch`) is used for the core algorithms — only the Python standard library, NumPy, and Pandas.
+All core algorithms are implemented from scratch using only Python, NumPy, and Pandas.
 
 📄 **Full technical report** (method, parameter selection, datasets, results, error analysis): [`Report`](docs/Report.pdf)
 
@@ -77,30 +81,14 @@ python -m plagiarism_engine.cli pairs \
 
 ## 📚 Using the Real PAN-PC-11 Corpus
 
-`scripts/prepare_pan_pc11_pairs.py` converts a locally-downloaded copy of the real PAN-PC-11 corpus (raw documents + XML plagiarism annotations, [Zenodo](https://zenodo.org/records/3250095)) into a `pairs`-compatible CSV, with no changes needed to `src/plagiarism_engine/`:
+The helper script `scripts/prepare_pan_pc11_pairs.py` converts a locally downloaded copy of the PAN-PC-11 corpus (raw documents and XML plagiarism annotations from Zenodo) into a CSV compatible with the `pairs` command, without requiring any changes to `src/plagiarism_engine/`.
 
-### 1. Confirm the annotation schema against your actual download:
-```bash
-python scripts/prepare_pan_pc11_pairs.py \
-    --corpus-dir data/raw/pan-plagiarism-corpus-2011/external-detection-corpus --inspect
-```
+For complete usage instructions and example commands, see:
 
-### 2. Build the labeled pairs CSV:
-```bash
-python scripts/prepare_pan_pc11_pairs.py \
-    --corpus-dir data/raw/pan-plagiarism-corpus-2011/external-detection-corpus \
-    --output data/processed/pan_pc11_pairs.csv --feature-name plagiarism
-```
+* **CLI Reference:** [`CLI_REFERENCE.md`](CLI_REFERENCE.md)
+* **Dataset setup guide:** [`data/raw/README.md`](data/raw/README.md)
 
-### 3. Evaluate (k=1 recommended — see docs/Report.pdf, Section 5.7, for why):
-```bash
-python -m plagiarism_engine.cli pairs \
-    --pairs data/processed/pan_pc11_pairs.csv \
-    --text-col-a text_a --text-col-b text_b --label-col label \
-    --shingle-size 1 --sweep --output outputs/metrics_pan_pc11.csv
-```
-
-See `data/raw/README.md` for the full walkthrough, the confirmed real directory layout, and a documented limitation of this dataset construction (length mismatch between positive and negative pairs).
+The dataset guide includes the complete walkthrough, the expected PAN-PC-11 directory structure, and a documented limitation of the generated evaluation pairs (length mismatch between positive and negative examples).
 
 ---
 
@@ -127,12 +115,11 @@ The suite in `tests/test_engine.py` (**46 tests**) covers:
 ```
 semantic-plagiarism-engine/
 ├── README.md
-├── requirements.txt
 ├── pyproject.toml
 ├── .gitignore
 ├── docs/
-│   ├── Report.tex        # Technical report (LaTeX source)
-│   ├── Report.pdf        # Technical report (compiled)
+│   ├── Report.tex              # Technical report (LaTeX source)
+│   ├── Report.pdf              # Technical report (compiled)
 │   └── figures/                # Report figures (generated, reproducible)
 ├── data/
 │   ├── sample_corpus/          # Small demo corpus for `compare` / `corpus`
@@ -141,7 +128,6 @@ semantic-plagiarism-engine/
 │   └── processed/              # Derived/cached datasets go here
 ├── src/
 │   └── plagiarism_engine/
-│       ├── __init__.py
 │       ├── preprocessing.py    # Normalization, tokenization, shingling
 │       ├── minhash.py          # From-scratch MinHash
 │       ├── lsh.py              # From-scratch banded LSH
@@ -151,16 +137,13 @@ semantic-plagiarism-engine/
 │       └── cli.py              # `compare` / `corpus` / `pairs` commands
 ├── scripts/
 │   └── prepare_pan_pc11_pairs.py   # Convert a local PAN-PC-11 download into
-│                                    # a `pairs`-compatible CSV (optional)
+│                                   # a `pairs`-compatible CSV (optional)
 ├── notebooks/
 │   └── exploration.ipynb       # Full walkthrough: all 3 CLI commands, parameter
-│                                # selection, and the real PAN-PC-11 case study
+│                               # selection, and the real PAN-PC-11 case study
 ├── tests/
 │   └── test_engine.py          # 46 tests
-├── outputs/
-│   ├── metrics.csv             # Written by `pairs`
-│   └── candidates.csv          # Written by `corpus`
-└──
+└── outputs/                    # Generated outputs (metrics, candidate pairs, etc.)
 ```
 
 
@@ -177,9 +160,10 @@ semantic-plagiarism-engine/
 | **Strength** | Robust when edits are concentrated (verbatim / lightly-edited copies) | Robust to reordering; strong on very short text |
 | **Weakness** | Struggles when edits are scattered throughout a long passage, unless $k$ is reduced | Still lexical, not truly semantic; sensitive to vocabulary swaps |
 
-📄 See `docs/Report.pdf` for the full write-up: why exact pairwise Jaccard comparison is O(n²), how LSH's banding scheme trades off false positives/negatives, parameter selection for both pipelines (including the automatic threshold-sweep methodology), and a worked error analysis of specific misclassified pairs from both the synthetic and real-corpus experiments.
+📄 For implementation details, parameter tuning, and error analysis, see `docs/Report.pdf`.
 
 ---
+
 ## 📝 Summary
 This project implements a semantic plagiarism and near-duplicate detection engine using two independent approaches: Shingling + MinHash + LSH and TF-IDF weighted SimHash.  
 It evaluates the methods on small curated documents, synthetic labeled pairs, and the PAN-PC-11 plagiarism corpus using precision, recall, F1-score, and runtime metrics.  
